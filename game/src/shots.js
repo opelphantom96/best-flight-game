@@ -102,10 +102,17 @@ export function stageShot(name, world) {
     w.ringsCollected = 7;
     w.mission = 4;
     const dest = w.missionData.dest;
-    w.x = dest.x + 10;
+    // Parked slightly angled on the strip (the win card is top-aligned
+    // now, so the plane, the ice strip and the aurora show below it).
+    // Clear the stale mission banner from the last nextMission() call —
+    // in a real game it decayed long before the win; frozen shot mode
+    // would otherwise leave it floating over the card.
+    w.x = dest.x + 15;
     w.y = 1.3;
     w.z = dest.z;
-    w.heading = 0;
+    w.heading = 0.28;
+    w.banner = '';
+    w.bannerUntil = 0;
     w.pitch = 0;
     w.speed = 0;
     w.throttle = 0;

@@ -30,6 +30,42 @@ function makeCloudTexture() {
   return tex;
 }
 
+// Wispy curtain alpha for the aurora ribbons: soft horizontal streaks
+// (fixed positions, so every run paints the same sky) fading out at the
+// top and bottom edges. White with alpha — the material colour tints it.
+function makeAuroraTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 128);
+  for (let i = 0; i < 22; i++) {
+    const x = (i * 67.3) % 256;
+    const y = 34 + ((i * 41.7) % 64);
+    const w = 40 + ((i * 29.1) % 60);
+    const h = 6 + ((i * 13.7) % 10);
+    const a = 0.25 + 0.45 * Math.abs(Math.sin(i * 1.7));
+    const grad = g.createRadialGradient(x, y, 0, x, y, w);
+    grad.addColorStop(0, `rgba(255,255,255,${a})`);
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Vertical envelope: the curtain dissolves at its top and bottom edge.
+  g.globalCompositeOperation = 'destination-in';
+  const env = g.createLinearGradient(0, 0, 0, 128);
+  env.addColorStop(0, 'rgba(255,255,255,0)');
+  env.addColorStop(0.25, 'rgba(255,255,255,0.9)');
+  env.addColorStop(0.6, 'rgba(255,255,255,1)');
+  env.addColorStop(0.85, 'rgba(255,255,255,0.55)');
+  env.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = env;
+  g.fillRect(0, 0, 256, 128);
+  return new THREE.CanvasTexture(c);
+}
+
 export function createRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(960, 540, false);
@@ -76,25 +112,30 @@ export function createRenderer(canvas) {
   scene.add(sunDisc);
 
   // --- aurora: three ribbons waving slowly ---------------------------------
+  // The ribbons hang in the sky AHEAD of the plane (re-positioned every
+  // frame in render(), so they are in view on every screen), spanning
+  // across the flight line — never along it, or the chase camera sees
+  // them edge-on and they vanish. A wispy alpha texture shapes each
+  // curtain so it reads as light, not a flat green slab.
+  const auroraTex = makeAuroraTexture();
   const auroras = [];
   const auroraColors = [PALETTE.auroraGreen, PALETTE.auroraTeal, PALETTE.auroraViolet];
+  const auroraBaseOpacity = [0.55, 0.45, 0.35];
   for (let i = 0; i < 3; i++) {
-    const geo = new THREE.PlaneGeometry(900, 70, 48, 6);
+    const geo = new THREE.PlaneGeometry(700 + i * 100, 150 - i * 12, 48, 6);
     const mat = new THREE.MeshBasicMaterial({
       color: auroraColors[i],
+      map: auroraTex,
       transparent: true,
-      opacity: 0.30 - i * 0.06,
+      opacity: auroraBaseOpacity[i],
       side: THREE.DoubleSide,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
       fog: false,
     });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(300 + i * 180, 150 + i * 32, -180 - i * 80);
-    mesh.rotation.x = -0.35;
-    mesh.rotation.z = 0.12 + i * 0.06;
     mesh.userData.base = geo.attributes.position.array.slice();
     mesh.userData.phase = i * 2.1;
+    mesh.userData.baseOpacity = auroraBaseOpacity[i];
     scene.add(mesh);
     auroras.push(mesh);
   }
@@ -105,25 +146,47 @@ export function createRenderer(canvas) {
   terrGeo.translate(1000, 0, 0);
   {
     const pos = terrGeo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const snow = new THREE.Color(PALETTE.snow);
-    const rock = new THREE.Color(PALETTE.rock);
-    const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      const h = terrainHeight(x, z);
-      pos.setY(i, h);
-      const t = Math.max(0, Math.min(1, h / 26));
-      tmp.copy(rock).lerp(snow, t);
-      // Slight sparkle variation so the snow reads as snow, not flat white.
+      pos.setY(i, terrainHeight(x, z));
+    }
+    terrGeo.computeVertexNormals();
+    // Colour AFTER the normals exist: the dawn light is part of the look.
+    // Snow above ~52, rock below ~26, rock outcrops poking through the
+    // snow where the patch noise is high, darker strata bands on the rock,
+    // warm sunrise tint on sun-facing slopes, cool blue in the shade —
+    // so the cliff walls read as layered fjord, not flat grey.
+    const nrm = terrGeo.attributes.normal;
+    const colors = new Float32Array(pos.count * 3);
+    const snow = new THREE.Color(PALETTE.snow);
+    const rock = new THREE.Color(PALETTE.rock);
+    const warm = new THREE.Color(0xffc890);
+    const cool = new THREE.Color(0x46648c);
+    const tmp = new THREE.Color();
+    const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      const h = pos.getY(i);
+      const patch = Math.sin(x * 0.11 + z * 0.073) * Math.sin(x * 0.031 - z * 0.057 + 2.0);
+      let snowT = clamp01((h - 26) / 26);
+      if (h > 20) snowT = clamp01(snowT - Math.max(0, patch) * 0.35);
+      tmp.copy(rock).lerp(snow, snowT);
+      if (snowT < 0.85) {
+        const band = Math.floor(h / 8) % 2 === 0 ? 1.0 : 0.8;
+        tmp.multiplyScalar(band);
+      }
+      const sunDot =
+        nrm.getX(i) * -0.62 + nrm.getY(i) * 0.38 + nrm.getZ(i) * -0.48;
+      if (sunDot > 0) tmp.lerp(warm, Math.min(0.32, sunDot * 0.32));
+      else tmp.lerp(cool, Math.min(0.35, -sunDot * 0.3));
       const v = 0.94 + 0.06 * Math.sin(x * 0.35 + z * 0.21);
       colors[i * 3] = tmp.r * v;
       colors[i * 3 + 1] = tmp.g * v;
       colors[i * 3 + 2] = tmp.b * v;
     }
     terrGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    terrGeo.computeVertexNormals();
   }
   const terrain = new THREE.Mesh(
     terrGeo,
@@ -283,9 +346,11 @@ export function createRenderer(canvas) {
     snowSeed.push({ x: Math.random() * 300 - 150, y: Math.random() * 120, z: Math.random() * 300 - 150, v: 6 + Math.random() * 8 });
   }
   snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+  // Fixed pixel size: with size attenuation a flake drifting right past
+  // the chase camera blew up into a giant white square in the win shot.
   const snowPts = new THREE.Points(
     snowGeo,
-    new THREE.PointsMaterial({ color: 0xffffff, size: 1.7, transparent: true, opacity: 0 }),
+    new THREE.PointsMaterial({ color: 0xffffff, size: 2.5, sizeAttenuation: false, transparent: true, opacity: 0 }),
   );
   snowPts.frustumCulled = false;
   scene.add(snowPts);
@@ -352,7 +417,7 @@ export function createRenderer(canvas) {
   function drawCard(s) {
     if (s.screen === lastScreen) return;
     lastScreen = s.screen;
-    card.className = s.screen === SCREEN.title ? 'top' : '';
+    card.className = s.screen === SCREEN.title || s.screen === SCREEN.win ? 'top' : '';
     if (s.screen === SCREEN.play || s.screen === SCREEN.pause) {
       if (s.screen === SCREEN.pause) {
         card.innerHTML =
@@ -378,8 +443,10 @@ export function createRenderer(canvas) {
         '<p>SCORE <b>' + Math.round(s.score) + '</b> &nbsp;•&nbsp; RINGS ' + s.ringsCollected + ' &nbsp;•&nbsp; FUEL ' + Math.round(s.fuel) + '</p>' +
         '<p class="go">▶ PRESS ENTER — NEXT MISSION</p></div>';
     } else if (s.screen === SCREEN.win) {
+      // Smaller, top-aligned card: the parked plane, the ice strip and
+      // the aurora stay visible below it instead of hiding behind it.
       html =
-        '<div class="card"><h1>CARGO DELIVERED</h1><p class="tag">dawn over the fjords — all five freights home</p>' +
+        '<div class="card win-card"><h1>CARGO DELIVERED</h1><p class="tag">dawn over the fjords — all five freights home</p>' +
         '<p class="stars">★★★★★</p>' +
         '<p>FINAL SCORE <b>' + Math.round(s.score) + '</b> &nbsp;•&nbsp; TIME ' + Math.round(s.time) + 's &nbsp;•&nbsp; BEST ' + Math.round(Math.max(s.best || 0, s.score)) + '</p>' +
         '<p class="go">▶ PLAY AGAIN — PRESS R</p></div>';
@@ -433,18 +500,29 @@ export function createRenderer(canvas) {
     });
     for (let i = md.clouds.length; i < cloudSprites.length; i++) cloudSprites[i].visible = false;
 
-    // Aurora ribbons wave.
-    for (const a of auroras) {
+    // Aurora ribbons wave — and hang in the sky AHEAD of the plane, across
+    // the flight line, so the chase camera always sees them in the upper
+    // frame (title, play, action and win alike). The ribbon's long axis
+    // runs across the heading: rotation.y = -(heading + PI/2).
+    const ah = s.heading;
+    const afx = Math.cos(ah);
+    const afz = Math.sin(ah);
+    for (let i = 0; i < auroras.length; i++) {
+      const a = auroras[i];
+      const dist = 170 + i * 90;
+      a.position.set(s.x + afx * dist, s.y + 60 + i * 26, s.z + afz * dist);
+      a.rotation.set(-0.12, -ah - Math.PI / 2, 0.05 + i * 0.05);
       const pos = a.geometry.attributes.position;
       const base = a.userData.base;
-      for (let i = 0; i < pos.count; i++) {
-        const bx = base[i * 3];
-        const by = base[i * 3 + 1];
-        pos.setZ(i, Math.sin(bx * 0.012 + t * 0.6 + a.userData.phase) * 9);
-        pos.setY(i, by + Math.sin(bx * 0.02 + t * 0.9 + a.userData.phase) * 5);
+      for (let j = 0; j < pos.count; j++) {
+        const bx = base[j * 3];
+        const by = base[j * 3 + 1];
+        pos.setZ(j, Math.sin(bx * 0.012 + t * 0.6 + a.userData.phase) * 9);
+        pos.setY(j, by + Math.sin(bx * 0.02 + t * 0.9 + a.userData.phase) * 5);
       }
       pos.needsUpdate = true;
-      a.material.opacity = 0.22 + 0.1 * Math.sin(t * 0.35 + a.userData.phase);
+      a.material.opacity =
+        a.userData.baseOpacity + 0.08 * Math.sin(t * 0.35 + a.userData.phase);
     }
 
     // Plane pose.
@@ -534,7 +612,7 @@ export function createRenderer(canvas) {
     const fl = s.floaters.map((f) => '<div style="color:' + f.color + '">' + f.text + '</div>').join('');
     if ($('hud-floaters').innerHTML !== fl) $('hud-floaters').innerHTML = fl;
     $('hud-hint').style.display = s.screen === SCREEN.play ? 'block' : 'none';
-    $('hud-top').style.display = s.screen === SCREEN.title ? 'none' : 'flex';
+    $('hud-top').style.display = s.screen === SCREEN.title || s.screen === SCREEN.win ? 'none' : 'flex';
     drawCard(s);
   }
 
