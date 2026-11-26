@@ -54,11 +54,11 @@ export const SCORE = {
 // --- the five missions ----------------------------------------------------
 // destX grows down the fjord; ring count, clouds, wind and storm grow too.
 export const MISSIONS = [
-  { name: 'FIRST LIGHT', rings: 1, clouds: 0, wind: 0, storm: 0.0, destX: 600, time: 200 },
-  { name: 'TWO FJORDS', rings: 3, clouds: 4, wind: 1.5, storm: 0.0, destX: 950, time: 240 },
-  { name: 'THE AURORA RUN', rings: 5, clouds: 6, wind: 3, storm: 0.25, destX: 1300, time: 280 },
-  { name: 'WHITE OUT', rings: 5, clouds: 8, wind: 5, storm: 0.6, destX: 1650, time: 300 },
-  { name: 'STORM FREIGHT', rings: 7, clouds: 10, wind: 8, storm: 1.0, destX: 2000, time: 340 },
+  { name: 'FIRST LIGHT', rings: 1, clouds: 0, wind: 0, storm: 0.0, destX: 600, time: 150 },
+  { name: 'TWO FJORDS', rings: 3, clouds: 4, wind: 1.5, storm: 0.0, destX: 950, time: 170 },
+  { name: 'THE AURORA RUN', rings: 5, clouds: 6, wind: 3, storm: 0.25, destX: 1300, time: 190 },
+  { name: 'WHITE OUT', rings: 5, clouds: 8, wind: 5, storm: 0.6, destX: 1500, time: 200 },
+  { name: 'STORM FREIGHT', rings: 7, clouds: 10, wind: 8, storm: 1.0, destX: 1700, time: 220 },
 ];
 
 export const RING_RADIUS = 12;

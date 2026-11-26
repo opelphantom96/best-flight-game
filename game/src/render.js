@@ -90,7 +90,7 @@ export function createRenderer(canvas) {
       fog: false,
     });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(300 + i * 180, 240 + i * 45, -260 - i * 120);
+    mesh.position.set(300 + i * 180, 150 + i * 32, -180 - i * 80);
     mesh.rotation.x = -0.35;
     mesh.rotation.z = 0.12 + i * 0.06;
     mesh.userData.base = geo.attributes.position.array.slice();
@@ -352,6 +352,7 @@ export function createRenderer(canvas) {
   function drawCard(s) {
     if (s.screen === lastScreen) return;
     lastScreen = s.screen;
+    card.className = s.screen === SCREEN.title ? 'top' : '';
     if (s.screen === SCREEN.play || s.screen === SCREEN.pause) {
       if (s.screen === SCREEN.pause) {
         card.innerHTML =
@@ -492,6 +493,8 @@ export function createRenderer(canvas) {
     }
 
     // Chase camera: behind and above, looking a little ahead of the plane.
+    // On the title screen the camera looks a little high, so the plane
+    // sits in the lower third, clear of the top-aligned title card.
     fwd.set(Math.cos(s.heading), 0, Math.sin(s.heading));
     const want = new THREE.Vector3(
       s.x - fwd.x * 26 + (Math.random() - 0.5) * s.shake,
@@ -500,9 +503,13 @@ export function createRenderer(canvas) {
     );
     const groundBelow = terrainHeight(want.x, want.z) + 4;
     if (want.y < groundBelow) want.y = groundBelow;
+    // Snap on a large jump (staged shots, mission restarts): lerping
+    // across the whole fjord would leave the camera behind for seconds.
+    if (camPos.distanceTo(want) > 40) camPos.copy(want);
     const k = paused ? 0.02 : 0.12;
     camPos.lerp(want, k);
-    camLook.set(s.x + fwd.x * 12, s.y + 1, s.z + fwd.z * 12);
+    const lookUp = s.screen === SCREEN.title ? 8 : 0;
+    camLook.set(s.x + fwd.x * 12, s.y + 1 + lookUp, s.z + fwd.z * 12);
     camera.position.copy(camPos);
     camera.lookAt(camLook);
 

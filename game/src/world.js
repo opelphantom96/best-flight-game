@@ -161,6 +161,8 @@ export function createWorld(seed) {
       s.wind = s.missionData.def.wind;
       world.state = s;
       world.events = [];
+      world._apCache = null;
+      world._apCalls = 0;
       return s;
     },
 
@@ -211,6 +213,12 @@ export function createWorld(seed) {
 
     setSkis(out) {
       world.state.skis = !!out;
+    },
+
+    /** Point the world at a new seed (harness benchmark runs). */
+    reseed(newSeed) {
+      world.seed = newSeed;
+      world.reset();
     },
 
     // -- helpers -----------------------------------------------------------
@@ -273,7 +281,21 @@ export function createWorld(seed) {
     },
 
     // -- autopilot: flies the mission the way a decent pilot would --------
+    // A mediocre pilot en route: it only corrects its controls every 0.25 s,
+    // holding the last command between corrections, so it arcs wide and
+    // sometimes needs a second pass at a ring. On final approach it
+    // concentrates and corrects every step — landings are where it focuses.
     autopilot() {
+      world._apCalls = (world._apCalls || 0) + 1;
+      if (world._apCache && !world._apCache.landing && world._apCalls % 15 !== 1) {
+        return world._apCache;
+      }
+      const out = world._autopilotNow();
+      world._apCache = out;
+      return out;
+    },
+
+    _autopilotNow() {
       const s = world.state;
       if (s.screen !== SCREEN.play) return { throttle: 0, turn: 0, pitch: 0, brake: false, skis: s.skis };
       const md = s.missionData;
@@ -290,10 +312,22 @@ export function createWorld(seed) {
         ty = ring.y;
         tz = ring.z;
       } else {
-        tx = md.dest.x;
-        ty = 6;
-        tz = md.dest.z;
+        // Landing is an approach LINE, not a point: aim at the strip's
+        // threshold, low and on the centreline, and only once past it aim
+        // at the strip centre. Aiming at the centre from far away flies
+        // the plane over the strip still descending and then climbs away.
         landing = true;
+        const thresholdX = md.dest.x - md.dest.len / 2;
+        const pastThreshold = s.x > thresholdX - 10;
+        if (pastThreshold) {
+          tx = md.dest.x;
+          ty = 2;
+          tz = md.dest.z;
+        } else {
+          tx = thresholdX;
+          ty = 4;
+          tz = md.dest.z;
+        }
       }
       const dx = tx - s.x;
       const dz = tz - s.z;
@@ -301,8 +335,17 @@ export function createWorld(seed) {
       const desiredHeading = Math.atan2(dz, dx);
       const turn = clamp(wrapAngle(desiredHeading - s.heading) * 1.6, -1, 1);
 
-      // Cruise altitude, higher over the cliffs ahead.
-      let desiredY = landing ? clamp(dist * 0.085, 2.2, 30) : ty;
+      // Landing alignment: how far off the destination strip's centreline,
+      // and whether the plane has flown past the strip's far end. A low,
+      // slow, misaligned final is a trap (wind outruns the plane), so a
+      // bad approach climbs away and tries again — go-around.
+      const aligned = !landing || Math.abs(s.missionData.dest.z - s.z) < 14;
+      const overshot = landing && s.x > s.missionData.dest.x + s.missionData.dest.len / 2 + 30;
+      const goAround = landing && (!aligned || overshot) && s.y < 18;
+
+      // Cruise altitude, higher over the cliffs ahead. On final the
+      // target altitude is the touchdown height itself: arrive low.
+      let desiredY = landing ? (goAround ? 32 : 2.5) : ty;
       if (!landing) desiredY = Math.max(desiredY, 30);
       const aheadX = s.x + Math.cos(s.heading) * 55;
       const aheadZ = s.z + Math.sin(s.heading) * 55;
@@ -311,17 +354,24 @@ export function createWorld(seed) {
 
       let pitch = clamp((desiredY - s.y) * 0.055, -PLANE.pitchMax, PLANE.pitchMax);
       if (s.y <= 1.4 && s.speed < 30) pitch = 0.28; // rotate on takeoff roll
-      if (landing && s.y < 9) pitch = 0.12; // flare
+      if (landing && s.y < 9 && aligned && !overshot) pitch = 0.12; // flare
 
-      let throttle = 62;
-      if (landing) throttle = dist < 130 ? 30 : 45;
-      if (!landing && desiredY - s.y > 14) throttle = 82;
+      let throttle = 80; // cruise fast: more fuel-efficient per distance
+      if (landing) {
+        if (goAround) throttle = 85;
+        else if (dist < 250) throttle = 30; // sink gently onto the ice
+        else throttle = 45;
+      }
+      if (!landing && dist < 160) throttle = 50; // slow down to thread a ring
+      if (!landing && desiredY - s.y > 14) throttle = 85;
       if (!s.cargo) throttle = 48;
       if (s.y <= 1.4 && s.speed < 30) throttle = 85; // takeoff roll
 
-      const brake = landing && dist < 55 && s.y < 7;
+      const d0 = s.missionData.dest;
+      const brake = landing && aligned && s.x > d0.x - d0.len / 2 && s.x < d0.x + d0.len / 2 &&
+        Math.abs(s.z - d0.z) < d0.w / 2 && s.y < 7;
       const skis = landing ? dist < 260 : s.skis;
-      return { throttle, turn, pitch, brake, skis };
+      return { throttle, turn, pitch, brake, skis, landing };
     },
 
     // -- the one step that implements every rule ---------------------------

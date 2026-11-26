@@ -38,11 +38,12 @@ export function stageShot(name, world) {
   }
 
   if (name === 'play') {
-    // Twenty seconds of real autopilot, then freeze the hero moment: the
+    // Eight seconds of real autopilot — mission 1 takes ~16 s to clear,
+    // so the screen is still 'play' — then freeze the hero moment: the
     // plane about to thread the first gold ring between the ice cliffs,
     // settlement lights far ahead, full HUD.
     s.screen = SCREEN.play;
-    stepAutopilot(world, 20);
+    stepAutopilot(world, 8);
     const ring = s.missionData.rings.find((r) => !r.collected) || s.missionData.rings[0];
     const fx = Math.cos(s.heading);
     const fz = Math.sin(s.heading);
@@ -56,7 +57,7 @@ export function stageShot(name, world) {
     s.fuel = 92;
     s.ice = 0;
     s.cargo = true;
-    s.banner = 'RING +50  •  +6s';
+    s.banner = 'THREAD THE GOLD RING';
     s.bannerUntil = 99;
     return;
   }

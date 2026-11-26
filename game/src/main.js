@@ -1,6 +1,10 @@
 // AURORA CARGO — main: fixed-step loop, screens, sounds, best score, and
 // the debug hook the harness drives. `?shot=<name>` stages a screenshot
 // scene instead of playing; otherwise the game runs on requestAnimationFrame.
+//
+// NOTE: world.startGame() / nextMission() replace world.state with a fresh
+// object, so nothing here caches `state` — every read goes through
+// world.state (via the state() helper and the hook's getter).
 
 import { createWorld, STEP } from './world.js';
 import { createRenderer } from './render.js';
@@ -17,12 +21,12 @@ const seedParam = Number(params.get('seed'));
 const seed = Number.isFinite(seedParam) && seedParam > 0 ? seedParam : SEED;
 
 const world = shotName ? createShotWorld(shotName) : createWorld(seed);
-const state = world.state;
+const state = () => world.state;
 try {
-  state.best = Number(localStorage.getItem(BEST_KEY) || 0) || 0;
-  world.best = state.best;
+  world.state.best = Number(localStorage.getItem(BEST_KEY) || 0) || 0;
+  world.best = world.state.best;
 } catch {
-  state.best = 0;
+  world.state.best = 0;
 }
 
 const renderer = createRenderer(canvas);
@@ -30,11 +34,12 @@ const input = createInput(canvas);
 const audio = createAudio();
 
 function saveBest() {
-  if (state.score > state.best) {
-    state.best = Math.round(state.score);
-    world.best = state.best;
+  const s = state();
+  if (s.score > s.best) {
+    s.best = Math.round(s.score);
+    world.best = s.best;
     try {
-      localStorage.setItem(BEST_KEY, String(state.best));
+      localStorage.setItem(BEST_KEY, String(s.best));
     } catch { /* best score is a nicety, never fatal */ }
   }
 }
@@ -58,36 +63,42 @@ function handleEvents(events) {
 }
 
 function onKeyOnce(code) {
+  const s = state();
   if (code === 'Enter') {
     audio.unlock();
     audio.click();
-    if (state.screen === SCREEN.title) {
+    if (s.screen === SCREEN.title) {
       world.startGame();
-    } else if (state.screen === SCREEN.missionClear) {
+    } else if (s.screen === SCREEN.missionClear) {
       world.nextMission();
     }
   } else if (code === 'KeyR') {
     audio.unlock();
-    if (state.screen !== SCREEN.title) world.startGame();
+    if (s.screen !== SCREEN.title) world.startGame();
   } else if (code === 'KeyP' || code === 'Escape') {
-    if (state.screen === SCREEN.play) state.screen = SCREEN.pause;
-    else if (state.screen === SCREEN.pause) state.screen = SCREEN.play;
+    if (s.screen === SCREEN.play) s.screen = SCREEN.pause;
+    else if (s.screen === SCREEN.pause) s.screen = SCREEN.play;
   } else if (code === 'KeyM') {
     audio.toggleMute();
   } else if (code === 'KeyL') {
-    if (state.screen === SCREEN.play) world.setSkis(!state.skis);
+    if (s.screen === SCREEN.play) world.setSkis(!s.skis);
   }
 }
 
 // The harness hook: the world, its live state, start, and the autopilot.
 window.__FLIGHT__ = {
   world,
-  state,
+  get state() {
+    return world.state;
+  },
   start() {
     world.startGame();
   },
   autopilot() {
     return world.autopilot();
+  },
+  drawCalls() {
+    return renderer.drawCalls();
   },
 };
 
@@ -108,7 +119,7 @@ function frame(now) {
   if (shotName) {
     // Screenshot mode: the staged hero moment is frozen; only the sky,
     // aurora and clouds animate, then the harness takes the frame.
-    renderer.render(state, false, now / 1000);
+    renderer.render(state(), false, now / 1000);
     shotFrames++;
     if (shotFrames === 3) window.__shotReady = true;
     return;
@@ -117,15 +128,16 @@ function frame(now) {
   acc += elapsed;
   while (acc >= STEP) {
     acc -= STEP;
-    if (state.screen === SCREEN.play) {
+    const s = state();
+    if (s.screen === SCREEN.play) {
       const events = world.step(STEP, input.read());
       handleEvents(events);
-    } else if (state.screen === SCREEN.title || state.screen === SCREEN.win || state.screen === SCREEN.end) {
+    } else if (s.screen === SCREEN.title || s.screen === SCREEN.win || s.screen === SCREEN.end) {
       world.stepBackground(STEP);
     }
   }
-  audio.update(state);
-  renderer.render(state, state.screen === SCREEN.pause, now / 1000);
+  audio.update(state());
+  renderer.render(state(), state().screen === SCREEN.pause, now / 1000);
 }
 
 requestAnimationFrame(frame);
