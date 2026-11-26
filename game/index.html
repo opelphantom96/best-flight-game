@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AURORA CARGO — freight over the fjords, under the lights</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; background: #0a1226; color: #ffe9b0;
+    font-family: "Segoe UI", system-ui, sans-serif; }
+  body { min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; }
+  #wrap { position: relative; width: 960px; height: 540px;
+    box-shadow: 0 0 60px rgba(122, 184, 224, 0.25); }
+  canvas#game { display: block; width: 960px; height: 540px; background: #7ab8e0; }
+  #hud { position: absolute; inset: 0; pointer-events: none;
+    font-size: 15px; line-height: 1.45; }
+  #hud-top { position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; gap: 10px; padding: 10px; }
+  .hud-panel { background: rgba(10, 18, 38, 0.72); border: 1px solid rgba(255, 233, 176, 0.35);
+    border-radius: 8px; padding: 8px 12px; color: #ffe9b0; min-width: 170px; }
+  .hud-panel b { color: #fff; }
+  #hud-mid { text-align: center; min-width: 250px; }
+  #hud-mid .bar-row { display: flex; align-items: center; gap: 6px; }
+  #hud-mid .bar-row span { width: 42px; text-align: right; font-size: 12px; color: #bcd6f5; }
+  #hud-mid .bar { flex: 1; height: 10px; background: rgba(255, 255, 255, 0.18);
+    border-radius: 5px; overflow: hidden; }
+  #hud-mid .bar-fill { height: 100%; width: 100%; border-radius: 5px; }
+  #hud-mid .bar-fill.fuel { background: #7dff9a; }
+  #hud-mid .bar-fill.ice { background: #7ab8e0; }
+  #hud-cargo { margin-top: 4px; font-weight: bold; letter-spacing: 1px; }
+  #hud-banner { position: absolute; top: 108px; left: 0; right: 0; text-align: center;
+    font-size: 22px; font-weight: bold; color: #ffe9b0;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8); transition: opacity 0.3s; }
+  #hud-floaters { position: absolute; top: 150px; left: 0; right: 0; text-align: center;
+    font-size: 19px; font-weight: bold; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85); }
+  #hud-hint { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center;
+    font-size: 13px; color: #dfeefc; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9); }
+  #card { position: absolute; inset: 0; display: none; align-items: center;
+    justify-content: center; pointer-events: none; }
+  #card .card { background: rgba(8, 14, 32, 0.78); border: 2px solid rgba(255, 217, 122, 0.55);
+    border-radius: 14px; padding: 26px 38px; text-align: center; max-width: 620px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5); }
+  #card h1 { margin: 0 0 6px; font-size: 44px; letter-spacing: 4px; color: #ffe9b0; }
+  #card .tag { margin: 0 0 12px; font-size: 17px; color: #bcd6f5; font-style: italic; }
+  #card .judge { color: #7dff9a; font-size: 16px; }
+  #card .keys { color: #dfeefc; font-size: 15px; line-height: 1.7; }
+  #card .best { color: #ffd97a; font-weight: bold; }
+  #card .go { font-size: 20px; font-weight: bold; color: #fff; margin: 14px 0 0; }
+  #card .stars { font-size: 34px; color: #ffd97a; letter-spacing: 8px; margin: 6px 0; }
+  #card p { margin: 8px 0; }
+  footer { width: 960px; display: flex; justify-content: space-between;
+    padding: 8px 2px 0; font-size: 13px; color: #8fa8c8; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="960" height="540"></canvas>
+  <div id="hud"></div>
+  <div id="card"></div>
+</div>
+<footer><span>AURORA CARGO — freight over the fjords, under the lights</span><span>W/S throttle &nbsp;•&nbsp; A/D turn &nbsp;•&nbsp; mouse pitch &nbsp;•&nbsp; SPACE flare &nbsp;•&nbsp; L skis</span></footer>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
